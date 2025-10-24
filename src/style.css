@@ -1,0 +1,4 @@
+@import "tailwindcss";
+.gallery-img {
+    transition: transform .25s ease;
+}
