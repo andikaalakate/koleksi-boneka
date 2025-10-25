@@ -16,7 +16,7 @@
             </Transition>
 
             <!-- loading indicator -->
-            <div v-if="!loaded" class="absolute inset-0 flex items-center justify-center text-white bg-black/30">
+            <div v-if="!loaded" class="absolute inset-0 flex items-center justify-center text-white">
                 <div class="animate-spin rounded-full h-8 w-8 border-4 border-gray-300 border-t-gray-700"></div>
             </div>
 
