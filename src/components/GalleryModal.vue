@@ -20,24 +20,24 @@
 
             <!-- tombol close -->
             <button @click="onClose"
-                class="absolute top-1 right-3 text-white bg-black bg-opacity-50 rounded-full px-2 py-1">
+                class="absolute top-1 right-3 text-white bg-black/50 rounded-full px-2 py-1">
                 ✕
             </button>
 
             <!-- tombol full size -->
             <a :href="imageList[index]" target="_blank"
-                class="absolute top-1 left-3 text-white bg-black bg-opacity-50 rounded-full px-3 py-1">
+                class="absolute top-1 left-3 text-white bg-black/50 rounded-full px-3 py-1">
                 Full
             </a>
 
             <!-- tombol navigasi -->
             <button v-if="index > 0" @click="onPrev"
-                class="absolute left-2 top-1/2 -translate-y-1/2 text-white bg-black bg-opacity-40 rounded-full px-4 py-1 items-center align-middle text-xl">
+                class="absolute left-2 top-1/2 -translate-y-1/2 text-white bg-black/40 rounded-full px-4 py-1 items-center align-middle text-xl">
                 ‹
             </button>
 
             <button v-if="index < total - 1" @click="onNext"
-                class="absolute right-2 top-1/2 -translate-y-1/2 text-white bg-black bg-opacity-40 rounded-full px-4 py-1 items-center align-middle text-xl">
+                class="absolute right-2 top-1/2 -translate-y-1/2 text-white bg-black/40 rounded-full px-4 py-1 items-center align-middle text-xl">
                 ›
             </button>
         </div>
