@@ -46,7 +46,7 @@
     <!-- Tombol ke atas -->
     <Transition name="fade">
       <button v-if="showScrollTop" @click="scrollToTop"
-        class="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-slate-100 text-black rounded-full px-3 py-2 border border-black/50 shadow-lg hover:bg-slate-800 hover:text-white transition duration-500 text-xl">
+        class="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-slate-100 text-black rounded-full px-3 py-1 border border-black/50 shadow-lg hover:bg-slate-800 hover:text-white transition duration-500 text-xl">
         ↑
       </button>
     </Transition>
