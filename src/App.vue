@@ -6,7 +6,7 @@ import Gallery from './components/Gallery.vue';
 	<div
 		class="min-h-screen bg-slate-100 bg-[url('https://www.toptal.com/designers/subtlepatterns/uploads/dot-grid.png')] bg-repeat p-6 flex flex-col items-center">
 		<!-- Judul Utama -->
-		<h1 class="text-3xl font-bold mb-4 text-center">Koleksi MyBoneka Imupp</h1>
+		<h1 class="text-3xl font-bold mb-4 text-center">Koleksi MyBoneka</h1>
 
 		<!-- Credit / Author -->
 		<div class="flex items-center justify-center gap-4 text-gray-600 text-sm mb-4 animate-fade-in">
