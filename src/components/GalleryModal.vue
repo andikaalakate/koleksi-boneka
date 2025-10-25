@@ -4,7 +4,7 @@
         <div
             class="relative max-w-5xl h-full w-full rounded-lg overflow-hidden items-center justify-center flex flex-col">
             <!-- indikator posisi gambar -->
-            <div class="absolute top-1 left-0 right-0 text-sm text-white bg-black/60 px-2 py-1 rounded-full">
+            <div class="absolute top-1 left-1/2 -translate-x-1/2 text-sm text-white bg-black/60 px-3 py-1 rounded-full">
                 Gambar {{ index + 1 }} dari {{ total }}
             </div>
 
