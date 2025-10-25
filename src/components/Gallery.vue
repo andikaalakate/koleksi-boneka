@@ -11,7 +11,8 @@
 
     <!-- grid -->
     <TransitionGroup ref="gridRoot" name="fade-grid" tag="div"
-      class="columns-2 sm:columns-3 md:columns-4 lg:columns-5 gap-4 [column-fill:balance] space-y-4">
+      class="columns-2 sm:columns-3 md:columns-4 lg:columns-5 gap-4 [column-fill:balance] space-y-4"
+      move-class="fade-move">
       <div v-for="(img, idx) in displayedImages" :key="img"
         class="relative break-inside-avoid overflow-hidden rounded-lg bg-white shadow hover:scale-[1.02] transition-transform">
         <button @click="openModal(idx)" class="block w-full text-left">
@@ -97,6 +98,7 @@ function setupLazyObserver() {
             const img = entry.target
             const data = img.getAttribute('data-src')
             if (data) {
+              img.onload = () => img.classList.add('loaded')
               img.src = data
               img.removeAttribute('data-src')
               ioLazy.unobserve(img)
@@ -262,15 +264,27 @@ function modalNext() {
 </script>
 
 <style scoped>
-.fade-grid-enter-active,
-.fade-grid-leave-active {
-  transition: all 0.3s ease;
+.fade-grid-enter-active {
+  transition: opacity 0.4s ease, transform 0.4s ease;
 }
 
-.fade-grid-enter-from,
+.fade-grid-leave-active {
+  transition: opacity 0.3s ease, transform 0.3s ease;
+  position: absolute;
+}
+
+.fade-grid-enter-from {
+  opacity: 0;
+  transform: scale(0.98) translateY(10px);
+}
+
 .fade-grid-leave-to {
   opacity: 0;
-  transform: translateY(10px);
+  transform: scale(0.98) translateY(-10px);
+}
+
+.fade-move {
+  transition: transform 0.4s ease;
 }
 
 .fade-zoom-enter-active,
@@ -292,5 +306,14 @@ function modalNext() {
 .fade-enter-from,
 .fade-leave-to {
   opacity: 0;
+}
+
+img.lazy {
+  opacity: 0;
+  transition: opacity 0.5s ease;
+}
+
+img.lazy.loaded {
+  opacity: 1;
 }
 </style>
