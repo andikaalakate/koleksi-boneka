@@ -2,15 +2,23 @@
     <div v-if="show" class="fixed inset-0 z-50 bg-black/75 flex items-center justify-center min-h-dvh p-4"
         @click.self="onClose">
         <div
-            class="relative max-w-5xl h-full w-full rounded-lg overflow-hidden items-center justify-center flex flex-col">
+            class="relative max-w-5xl h-full w-full rounded-lg overflow-hidden flex items-center justify-center flex-col">
+
             <!-- indikator posisi gambar -->
             <div class="absolute top-1 left-1/2 -translate-x-1/2 text-sm text-white bg-black/60 px-3 py-1 rounded-full">
                 Gambar {{ index + 1 }} dari {{ total }}
             </div>
 
-            <!-- gambar utama -->
-            <img @contextmenu.prevent @dragstart.prevent :src="getR2FullUrl(imageList[index])"
-                class="w-full max-h-[85vh] object-contain rounded transition-all duration-300" />
+            <!-- gambar utama dengan transition -->
+            <Transition name="fade" mode="out-in">
+                <img :key="index" v-if="currentSrc" :src="currentSrc" @load="onImageLoad" @contextmenu.prevent
+                    @dragstart.prevent class="w-full max-h-[85vh] object-contain rounded transition-all duration-300" />
+            </Transition>
+
+            <!-- loading indicator -->
+            <div v-if="!loaded" class="absolute inset-0 flex items-center justify-center text-white bg-black/30">
+                <div class="animate-spin rounded-full h-8 w-8 border-4 border-gray-300 border-t-gray-700"></div>
+            </div>
 
             <!-- nama file di bawah gambar -->
             <div
@@ -19,8 +27,7 @@
             </div>
 
             <!-- tombol close -->
-            <button @click="onClose"
-                class="absolute top-1 right-3 text-white bg-black/50 rounded-full px-2 py-1">
+            <button @click="onClose" class="absolute top-1 right-3 text-white bg-black/50 rounded-full px-2 py-1">
                 ✕
             </button>
 
@@ -31,13 +38,12 @@
             </a>
 
             <!-- tombol navigasi -->
-            <button v-if="index > 0" @click="onPrev"
-                class="absolute left-2 top-1/2 -translate-y-1/2 text-white bg-black/40 rounded-full px-4 py-1 items-center align-middle text-xl">
+            <button v-if="index > 0" @click="onPrevClick"
+                class="absolute left-2 top-1/2 -translate-y-1/2 text-white bg-black/40 rounded-full px-4 py-1 text-xl">
                 ‹
             </button>
-
-            <button v-if="index < total - 1" @click="onNext"
-                class="absolute right-2 top-1/2 -translate-y-1/2 text-white bg-black/40 rounded-full px-4 py-1 items-center align-middle text-xl">
+            <button v-if="index < total - 1" @click="onNextClick"
+                class="absolute right-2 top-1/2 -translate-y-1/2 text-white bg-black/40 rounded-full px-4 py-1 text-xl">
                 ›
             </button>
         </div>
@@ -45,7 +51,7 @@
 </template>
 
 <script setup>
-import { onMounted, onUnmounted, watch } from 'vue'
+import { ref, watch, onMounted, onUnmounted } from 'vue'
 
 const props = defineProps({
     show: Boolean,
@@ -56,15 +62,29 @@ const props = defineProps({
 
 const emit = defineEmits(['close', 'prev', 'next'])
 
+const loaded = ref(false)
+const currentSrc = ref('')
+
+// ketika index berubah, set src baru dan reset loaded
+watch(() => props.index, (newIndex) => {
+    loaded.value = false
+    currentSrc.value = getR2FullUrl(props.imageList[newIndex])
+}, { immediate: true })
+
+function onImageLoad() {
+    loaded.value = true
+}
+
 function onClose() {
     emit('close')
 }
-function onPrev() {
+function onPrevClick() {
     emit('prev')
 }
-function onNext() {
+function onNextClick() {
     emit('next')
 }
+
 function extractFileName(url) {
     if (!url) return ''
     return url.split('/').pop()
@@ -74,35 +94,29 @@ function getR2FullUrl(url) {
     return url.replace(/^(https?:\/\/[^/]+)/, '$1/cdn-cgi/image/fit=scale-down,width=720')
 }
 
+// keyboard nav
 function handleKey(e) {
     if (!props.show) return
     switch (e.key) {
-        case 'ArrowLeft':
-            onPrev()
-            break
-        case 'ArrowRight':
-            onNext()
-            break
-        case 'Escape':
-            onClose()
-            break
+        case 'ArrowLeft': onPrevClick(); break
+        case 'ArrowRight': onNextClick(); break
+        case 'Escape': onClose(); break
     }
 }
 
-onMounted(() => {
-    window.addEventListener('keydown', handleKey)
-})
-
-onUnmounted(() => {
-    window.removeEventListener('keydown', handleKey)
-})
-
-watch(
-    () => props.show,
-    (val) => {
-        if (val) window.addEventListener('keydown', handleKey)
-        else window.removeEventListener('keydown', handleKey)
-    }
-)
+onMounted(() => window.addEventListener('keydown', handleKey))
+onUnmounted(() => window.removeEventListener('keydown', handleKey))
 </script>
+
+<style>
+.fade-enter-active,
+.fade-leave-active {
+    transition: opacity 0.3s;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+    opacity: 0;
+}
+</style>
   
