@@ -1,178 +1,249 @@
 <template>
-  <div class="w-full max-w-6xl">
+  <div class="w-full mx-auto">
     <!-- controls -->
-    <div class="flex max-md:flex-col items-center justify-between mb-4 gap-2">
-      <div class="flex items-center gap-6 max-md:w-full">
-        <label class="text-sm text-gray-600">Per halaman</label>
-        <select v-model.number="limit" @change="resetAndFetch" class="px-2 py-1 border rounded w-full">
-          <option v-for="l in [20, 40, 60, 100]" :key="l" :value="l">{{ l }}</option>
-        </select>
-      </div>
-
-      <div class="flex items-center gap-2">
-        <input v-model="filter" @input="onFilter" placeholder="Cari nama file..." class="px-3 w-full py-1 border rounded" />
-        <button @click="refresh" class="px-3 py-1 bg-gray-200 rounded">Refresh</button>
+    <div class="flex items-center justify-between mb-4 gap-2 max-w-6xl mx-auto">
+      <div class="flex items-center gap-2 w-full">
+        <input v-model="filter" @input="onFilter" placeholder="Cari nama file..."
+          class="px-3 w-full py-1 border rounded" />
+        <button @click="refresh" class="px-3 py-1 bg-gray-200 rounded border">Refresh</button>
       </div>
     </div>
 
     <!-- grid -->
-    <div ref="gridRoot" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-      <div v-for="(img, idx) in pageImages" :key="img" class="relative group rounded overflow-hidden bg-white shadow">
+    <TransitionGroup ref="gridRoot" name="fade-grid" tag="div"
+      class="columns-2 sm:columns-3 md:columns-4 lg:columns-5 gap-4 [column-fill:balance] space-y-4">
+      <div v-for="(img, idx) in displayedImages" :key="img"
+        class="relative break-inside-avoid overflow-hidden rounded-lg bg-white shadow hover:scale-[1.02] transition-transform">
         <button @click="openModal(idx)" class="block w-full text-left">
-          <!-- use native lazy loading + placeholder technique -->
-          <img :data-src="img" :alt="img" class="w-full h-40 object-cover gallery-img lazy" loading="lazy"
-            :src="placeholder" />
+          <img @contextmenu.prevent @dragstart.prevent  :data-src="getR2ThumbUrl(img)" :alt="img"
+            class="w-full object-cover lazy" loading="lazy" :src="placeholder" />
         </button>
       </div>
-    </div>
+    </TransitionGroup>
 
-    <!-- pagination / infinite -->
-    <div class="flex justify-center items-center gap-3 mt-6">
-      <button @click="prevPage" :disabled="page === 1" class="px-3 py-1 rounded bg-gray-200 disabled:opacity-50">←
-        Prev</button>
-      <div class="text-sm text-gray-700">Halaman {{ page }} / {{ totalPages }}</div>
-      <button @click="nextPage" :disabled="page === totalPages"
-        class="px-3 py-1 rounded bg-gray-200 disabled:opacity-50">Next →</button>
-    </div>
+    <!-- jika tidak ada hasil -->
+    <Transition name="fade">
+      <div v-if="!loading && filter && filtered.length === 0" class="text-center text-gray-500 py-10">
+        Tidak ada hasil yang cocok dengan "<span class="font-semibold">{{ filter }}</span>"
+      </div>
+
+      <div v-else-if="!loading && !filter && filtered.length === 0" class="text-center text-gray-500 py-10">
+        Belum ada gambar tersedia.
+      </div>
+    </Transition>
+
+    <!-- Loading spinner -->
+    <Transition name="fade">
+      <div v-if="loading" class="flex justify-center my-6">
+        <div class="animate-spin rounded-full h-8 w-8 border-4 border-gray-300 border-t-gray-700"></div>
+      </div>
+    </Transition>
+
+    <!-- Sentinel untuk infinite scroll -->
+    <div ref="sentinel" class="h-10"></div>
+
+    <!-- Tombol ke atas -->
+    <Transition name="fade">
+      <button v-if="showScrollTop" @click="scrollToTop"
+        class="fixed bottom-6 right-1/2 z-50 bg-slate-100 text-black rounded-full px-3 py-2 border border-black/50 shadow-lg hover:bg-slate-800 hover:text-white transition duration-500 text-xl">
+        ↑
+      </button>
+    </Transition>
 
     <!-- modal -->
-    <div v-if="showModal" class="fixed inset-0 z-50 bg-black/50 bg-opacity-80 flex items-center justify-center p-4"
-      @click.self="closeModal">
-      <div class="relative max-w-4xl w-full">
-        <img :src="pageImages[modalIndex]" class="w-full max-h-[85vh] object-contain rounded" />
-        <button @click="closeModal"
-          class="absolute top-3 right-3 text-white bg-black bg-opacity-50 rounded-full px-2 py-1">✕</button>
-        <button v-if="modalIndex > 0" @click="modalPrev"
-          class="absolute left-2 top-1/2 -translate-y-1/2 text-white bg-black bg-opacity-40 rounded-full px-4 py-2">‹
-        </button>
-
-        <button v-if="modalIndex < pageImages.length - 1" @click="modalNext"
-          class="absolute right-2 top-1/2 -translate-y-1/2 text-white bg-black bg-opacity-40 rounded-full px-4 py-2">›</button>
-      </div>
-    </div>
+    <Transition name="fade-zoom">
+      <GalleryModal v-if="showModal" :show="showModal" :index="modalIndex" :total="displayedImages.length"
+        :imageList="displayedImages" @close="closeModal" @prev="modalPrev" @next="modalNext" />
+    </Transition>
   </div>
 </template>
 
 <script setup>
 import axios from 'axios'
-import { ref, reactive, onMounted, computed, watch, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
+import GalleryModal from './GalleryModal.vue'
 
 const IMAGES_JSON = import.meta.env.VITE_IMAGES_JSON_URL
-const placeholder = '/placeholder.webp' // keep small image in public/
-
-function getThumbUrl(url) {
-  try {
-    // Jika Cloudflare R2 punya fitur Image Resizing aktif
-    // Maka cukup tambahkan query param untuk ubah resolusi & kualitas
-    const u = new URL(url)
-    u.searchParams.set('width', 400)
-    u.searchParams.set('quality', 70)
-    return u.toString()
-  } catch {
-    // fallback: kalau bukan URL lengkap
-    return url
-  }
-}
+const placeholder = '/placeholder.webp'
 
 const images = ref([])
 const filtered = ref([])
-const page = ref(1)
-const limit = ref(40)
-const totalPages = ref(1)
+const displayedImages = ref([])
 const filter = ref('')
+const loading = ref(false)
 const showModal = ref(false)
 const modalIndex = ref(0)
 const gridRoot = ref(null)
+const sentinel = ref(null)
+const showScrollTop = ref(false)
 
-// IntersectionObserver for lazy swap
-let io = null
+let ioLazy = null
+let ioScroll = null
+const batchSize = 40
+let currentBatch = 0
 
-function setupObserver() {
-  if (io) io.disconnect()
-  io = new IntersectionObserver((entries) => {
-    entries.forEach(entry => {
-      if (entry.isIntersecting) {
-        const img = entry.target
-        const data = img.getAttribute('data-src')
-        if (data) {
-          img.src = data
-          img.removeAttribute('data-src')
-          io.unobserve(img)
-        }
-      }
-    })
-  }, { rootMargin: '200px' })
+function getR2ThumbUrl(url) {
+  if (!url) return ''
+  return url.replace(/^(https?:\/\/[^/]+)/, '$1/cdn-cgi/image/fit=scale-down,width=400')
+}
 
-  // observe visible images
+// observer untuk lazyload
+function setupLazyObserver() {
+  if (!ioLazy) {
+    ioLazy = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            const img = entry.target
+            const data = img.getAttribute('data-src')
+            if (data) {
+              img.src = data
+              img.removeAttribute('data-src')
+              ioLazy.unobserve(img)
+            }
+          }
+        })
+      },
+      { rootMargin: '300px' }
+    )
+  }
+
   nextTick(() => {
-    if (!gridRoot.value) return
-    const imgs = gridRoot.value.querySelectorAll('img.lazy')
-    imgs.forEach(i => {
-      if (i.getAttribute('data-src')) io.observe(i)
+    const rootEl = gridRoot.value?.$el || gridRoot.value
+    if (!rootEl) return
+    rootEl.querySelectorAll('img.lazy').forEach((img) => {
+      if (img.getAttribute('data-src')) ioLazy.observe(img)
     })
   })
 }
 
-async function loadJson() {
+// acak array
+const seed = ref(Date.now())
+function randomWithSeed(seed) {
+  const x = Math.sin(seed++) * 10000
+  return x - Math.floor(x)
+}
+
+function shuffleArray(arr) {
+  const a = [...arr]
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(randomWithSeed(seed.value) * (i + 1))
+      ;[a[i], a[j]] = [a[j], a[i]]
+  }
+  return a
+}
+
+// ambil data images.json
+async function loadJson({ force = false } = {}) {
+  loading.value = true
   try {
-    const res = await axios.get(IMAGES_JSON)
-    // res.data expected to be array of URLs or filenames
-    images.value = Array.isArray(res.data) ? res.data : []
-    applyFilterAndPaging()
-    // prefetch next page images' low-priority
-    prefetchNextPage()
+    if (!force && sessionStorage.getItem('galleryImages')) {
+      images.value = JSON.parse(sessionStorage.getItem('galleryImages'))
+      applyFilter()
+      return true
+    }
+
+    const url = force
+      ? `${IMAGES_JSON}${IMAGES_JSON.includes('?') ? '&' : '?'}t=${Date.now()}`
+      : IMAGES_JSON
+
+    const res = await axios.get(url, { headers: { 'Cache-Control': 'no-cache' } })
+    const data = Array.isArray(res.data) ? shuffleArray(res.data) : []
+    images.value = data
+    sessionStorage.setItem('galleryImages', JSON.stringify(data))
+
+    applyFilter()
+    return true
   } catch (err) {
     console.error('Gagal fetch images.json', err)
     images.value = []
+    applyFilter()
+    return false
+  } finally {
+    loading.value = false
+    nextTick(setupLazyObserver)
   }
 }
 
-function applyFilterAndPaging() {
-  const q = filter.value.trim().toLowerCase()
-  filtered.value = q ? images.value.filter(u => u.toLowerCase().includes(q)) : images.value
-  totalPages.value = Math.max(1, Math.ceil(filtered.value.length / limit.value))
-  if (page.value > totalPages.value) page.value = totalPages.value
-  setupObserver()
+async function refresh() {
+  filter.value = ''
+  images.value = []
+  filtered.value = []
+  displayedImages.value = []
+  currentBatch = 0
+  const ok = await loadJson({ force: true })
+  if (ok) {
+    applyFilter()
+    setupLazyObserver()
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
 }
 
-const pageImages = computed(() => {
-  const start = (page.value - 1) * limit.value
-  return filtered.value.slice(start, start + limit.value)
+function applyFilter() {
+  const q = filter.value.trim().toLowerCase()
+  filtered.value = q
+    ? images.value.filter((u) => u.toLowerCase().includes(q))
+    : images.value
+  displayedImages.value = filtered.value.slice(0, batchSize)
+  currentBatch = 1
+  setupLazyObserver()
+}
+
+let filterTimeout
+function onFilter() {
+  clearTimeout(filterTimeout)
+  filterTimeout = setTimeout(() => applyFilter(), 300)
+}
+
+// infinite scroll
+function setupInfiniteScroll() {
+  if (ioScroll) ioScroll.disconnect()
+  ioScroll = new IntersectionObserver(
+    (entries) => {
+      if (entries[0].isIntersecting && !loading.value) loadMore()
+    },
+    { rootMargin: '400px' }
+  )
+  if (sentinel.value) ioScroll.observe(sentinel.value)
+}
+
+function loadMore() {
+  const start = currentBatch * batchSize
+  const nextItems = filtered.value.slice(start, start + batchSize)
+  if (nextItems.length === 0) return
+  displayedImages.value.push(...nextItems)
+  currentBatch++
+  nextTick(setupLazyObserver)
+}
+
+// tombol ke atas
+function handleScroll() {
+  showScrollTop.value = window.scrollY > 500
+}
+
+function scrollToTop() {
+  window.scrollTo({ top: 0, behavior: 'smooth' })
+}
+
+function disableContextMenu(e) {
+  e.preventDefault()
+}
+
+onMounted(() => {
+  loadJson()
+  setupInfiniteScroll()
+  window.addEventListener('scroll', handleScroll)
+
+  // Nonaktifkan klik kanan
+  document.addEventListener('contextmenu', disableContextMenu)
 })
 
-function resetAndFetch() {
-  page.value = 1
-  applyFilterAndPaging()
-  prefetchNextPage()
-}
+onUnmounted(() => {
+  window.removeEventListener('scroll', handleScroll)
+  document.removeEventListener('contextmenu', disableContextMenu)
+})
 
-function onFilter() {
-  page.value = 1
-  applyFilterAndPaging()
-}
-
-function prevPage() {
-  if (page.value > 1) {
-    page.value--
-    setupObserver()
-    prefetchNextPage()
-    window.scrollTo({ top: 0, behavior: 'smooth' })
-  }
-}
-function nextPage() {
-  if (page.value < totalPages.value) {
-    page.value++
-    setupObserver()
-    prefetchNextPage()
-    window.scrollTo({ top: 0, behavior: 'smooth' })
-  }
-}
-
-function refresh() {
-  loadJson()
-}
-
-// modal controls
+// modal
 function openModal(idx) {
   modalIndex.value = idx
   showModal.value = true
@@ -182,28 +253,44 @@ function closeModal() {
   showModal.value = false
   document.body.style.overflow = ''
 }
-function modalPrev() { if (modalIndex.value > 0) modalIndex.value-- }
-function modalNext() { if (modalIndex.value < pageImages.value.length - 1) modalIndex.value++ }
-
-// prefetch low-priority images for next page (create Image objects)
-function prefetchNextPage() {
-  const next = page.value + 1
-  if (next > totalPages.value) return
-  const start = (next - 1) * limit.value
-  const items = filtered.value.slice(start, start + limit.value)
-  for (let u of items.slice(0, 10)) { // just prefetch some
-    const i = new Image()
-    i.src = u
-  }
+function modalPrev() {
+  if (modalIndex.value > 0) modalIndex.value--
 }
-
-onMounted(() => {
-  loadJson()
-  // re-setup observer if page changes
-  watch([page, limit], () => nextTick(setupObserver))
-})
+function modalNext() {
+  if (modalIndex.value < displayedImages.value.length - 1) modalIndex.value++
+}
 </script>
 
 <style scoped>
-/* small adjustments */
+.fade-grid-enter-active,
+.fade-grid-leave-active {
+  transition: all 0.3s ease;
+}
+
+.fade-grid-enter-from,
+.fade-grid-leave-to {
+  opacity: 0;
+  transform: translateY(10px);
+}
+
+.fade-zoom-enter-active,
+.fade-zoom-leave-active {
+  transition: all 0.3s ease;
+}
+
+.fade-zoom-enter-from,
+.fade-zoom-leave-to {
+  opacity: 0;
+  transform: scale(0.95);
+}
+
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.3s;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
 </style>
