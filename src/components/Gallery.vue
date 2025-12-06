@@ -103,6 +103,13 @@ function loadFavorites() {
 
 function updateFavorite() {
   loadFavorites()
+
+  nextTick(async () => {
+    // tunggu semua gambar di container selesai decode
+    const imgs = document.querySelectorAll(".masonry-item img")
+    await Promise.allSettled([...imgs].map(img => img.decode?.() || Promise.resolve()))
+    resizeAllItems()
+  })
 }
 
 function filterFavorites() {
@@ -357,7 +364,12 @@ onUnmounted(() => {
 
 watch(showFavoritesOnly, () => {
   filterFavorites()
+  nextTick(() => {
+    setupLazyObserver()
+    resizeAllItems()
+  })
 })
+
 
 
 // modal functions
