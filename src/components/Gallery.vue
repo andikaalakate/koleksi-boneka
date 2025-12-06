@@ -2,12 +2,16 @@
   <div class="w-full mx-auto">
 
     <!-- Controls -->
-    <div class="flex items-center justify-between mb-4 gap-2 max-w-6xl mx-auto">
+    <div class="flex items-center flex-col mb-4 gap-2 max-w-6xl mx-auto">
       <div class="flex items-center gap-2 w-full">
         <input v-model="filter" @input="onFilter" placeholder="Cari nama file..."
           class="px-3 w-full py-1 border rounded backdrop-blur-xl" />
         <button @click="refresh" class="px-3 py-1 rounded border backdrop-blur-xl">Refresh</button>
       </div>
+      <button @click="showFavoritesOnly = !showFavoritesOnly"
+        class="px-3 py-1 col-span-2 w-full rounded border backdrop-blur-xl">
+        {{ showFavoritesOnly ? "Semua" : "Favorit" }}
+      </button>
     </div>
 
     <!-- Masonry Grid -->
@@ -15,6 +19,10 @@
       <div v-for="(img, idx) in displayedImages" :key="img" class="masonry-item" @click="openModal(idx)">
         <img @contextmenu.prevent @dragstart.prevent :data-src="getR2ThumbUrl(img)" :alt="img" class="lazy rounded-lg"
           :src="placeholder" loading="lazy" />
+        <div v-if="favorites.includes(img)"
+          class="absolute top-1 right-1 bg-black/60 text-white rounded-full px-2 py-1 text-xs">
+          ❤️
+        </div>
       </div>
     </TransitionGroup>
 
@@ -51,14 +59,15 @@
     <!-- Modal -->
     <Transition name="fade-zoom">
       <GalleryModal v-if="showModal" :show="showModal" :index="modalIndex" :total="displayedImages.length"
-        :imageList="displayedImages" @close="closeModal" @prev="modalPrev" @next="modalNext" />
+        :imageList="displayedImages" @close="closeModal" @prev="modalPrev" @next="modalNext"
+        @favorited="updateFavorite" />
     </Transition>
   </div>
 </template>
 
 <script setup>
 import axios from 'axios'
-import { ref, nextTick, onMounted, onUnmounted } from 'vue'
+import { ref, nextTick, onMounted, onUnmounted, watch } from 'vue'
 import GalleryModal from './GalleryModal.vue'
 
 const IMAGES_JSON = import.meta.env.VITE_IMAGES_JSON_URL
@@ -83,6 +92,26 @@ let currentBatch = 0
 function getR2ThumbUrl(url) {
   if (!url) return ''
   return url.replace(/^(https?:\/\/[^/]+)/, '$1/cdn-cgi/image/fit=scale-down,width=400')
+}
+
+const favorites = ref([])
+const showFavoritesOnly = ref(false)
+
+function loadFavorites() {
+  favorites.value = JSON.parse(localStorage.getItem('favorites') || '[]')
+}
+
+function updateFavorite() {
+  loadFavorites()
+}
+
+function filterFavorites() {
+  if (showFavoritesOnly.value) {
+    filtered.value = images.value.filter(u => favorites.value.includes(u))
+  } else {
+    applyFilter() // pakai logic filter biasa
+  }
+  displayedImages.value = filtered.value.slice(0, batchSize)
 }
 
 /* -------------------------
@@ -304,6 +333,7 @@ function disableContextMenu(e) {
 
 onMounted(() => {
   loadJson()
+  loadFavorites()
   setupInfiniteScroll()
   window.addEventListener('scroll', handleScroll)
   window.addEventListener('resize', resizeAllItems)
@@ -324,6 +354,11 @@ onUnmounted(() => {
   if (ioLazy) ioLazy.disconnect()
   if (ioScroll) ioScroll.disconnect()
 })
+
+watch(showFavoritesOnly, () => {
+  filterFavorites()
+})
+
 
 // modal functions
 function openModal(idx) {

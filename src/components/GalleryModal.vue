@@ -20,6 +20,12 @@
                 <div class="animate-spin rounded-full h-8 w-8 border-4 border-gray-300 border-t-gray-700"></div>
             </div>
 
+            <!-- tombol favorit -->
+            <button @click="toggleFavorite"
+                class="absolute bottom-20 md:w-fit max-md:w-full left-1/2 -translate-x-1/2 truncate text-white bg-black/50 rounded-full px-3 py-1">
+                {{ isFavorited ? '❤️' : '🤍' }}
+            </button>
+
             <!-- nama file di bawah gambar -->
             <div
                 class="text-center text-gray-200 rounded-lg p-2 text-sm bg-black/50 absolute bottom-1 md:w-fit max-md:w-full left-1/2 -translate-x-1/2 truncate">
@@ -60,13 +66,40 @@ const props = defineProps({
     imageList: Array,
 })
 
-const emit = defineEmits(['close', 'prev', 'next'])
+const emit = defineEmits(['close', 'prev', 'next', 'favorited'])
+
+const isFavorited = ref(false)
 
 const loaded = ref(false)
 const currentSrc = ref('')
 
+function checkFavorite() {
+    const fav = JSON.parse(localStorage.getItem('favorites') || '[]')
+    const current = props.imageList[props.index]
+    isFavorited.value = fav.includes(current)
+}
+
+function toggleFavorite() {
+    const fav = JSON.parse(localStorage.getItem('favorites') || '[]')
+    const current = props.imageList[props.index]
+
+    if (fav.includes(current)) {
+        const updated = fav.filter(i => i !== current)
+        localStorage.setItem('favorites', JSON.stringify(updated))
+        isFavorited.value = false
+    } else {
+        fav.push(current)
+        localStorage.setItem('favorites', JSON.stringify(fav))
+        isFavorited.value = true
+    }
+
+    // beri tahu parent
+    emit('favorited', current)
+}
+
 // ketika index berubah, set src baru dan reset loaded
 watch(() => props.index, (newIndex) => {
+    checkFavorite()
     loaded.value = false
     currentSrc.value = getR2FullUrl(props.imageList[newIndex])
 }, { immediate: true })
@@ -104,7 +137,11 @@ function handleKey(e) {
     }
 }
 
-onMounted(() => window.addEventListener('keydown', handleKey))
+onMounted(() => {
+    window.addEventListener('keydown', handleKey)
+    checkFavorite()
+})
+
 onUnmounted(() => window.removeEventListener('keydown', handleKey))
 </script>
 
@@ -119,4 +156,3 @@ onUnmounted(() => window.removeEventListener('keydown', handleKey))
     opacity: 0;
 }
 </style>
-  
