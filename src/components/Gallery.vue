@@ -344,13 +344,33 @@ function modalNext() {
 </script>
 
 <style scoped>
-/* grid-based masonry: keep grid-auto-rows small base */
 .masonry-grid {
   display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  /* minimal 2 kolom */
   gap: 1rem;
-  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
   grid-auto-rows: 8px;
-  /* dasar baris untuk perhitungan span */
+}
+
+/* layar sedang */
+@media (min-width: 480px) {
+  .masonry-grid {
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  }
+}
+
+/* layar besar */
+@media (min-width: 768px) {
+  .masonry-grid {
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  }
+}
+
+/* layar ekstra besar */
+@media (min-width: 1280px) {
+  .masonry-grid {
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  }
 }
 
 .masonry-item {

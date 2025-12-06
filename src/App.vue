@@ -18,7 +18,7 @@ watch(isDark, (val) => {
 </script>
 
 <template>
-	<div class="min-h-screen bg-size-[40%] p-6 flex flex-col items-center transition-colors duration-500 bg-repeat"
+	<div class="min-h-screen max-lg:bg-size-[100%] lg:bg-size-[40%] p-6 flex flex-col items-center transition-colors duration-500 bg-repeat"
 		:class="isDark
 			? 'bg-gray-900 text-gray-100 bg-[url(/wallpaper.png)] placeholder:text-gray-100'
 			: 'bg-slate-100 text-gray-900 bg-[url(/wallpaper.png)] placeholder:text-gray-900'
