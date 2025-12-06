@@ -1,49 +1,46 @@
 <template>
   <div class="w-full mx-auto">
-    <!-- controls -->
+
+    <!-- Controls -->
     <div class="flex items-center justify-between mb-4 gap-2 max-w-6xl mx-auto">
       <div class="flex items-center gap-2 w-full">
         <input v-model="filter" @input="onFilter" placeholder="Cari nama file..."
-          class="px-3 w-full py-1 border rounded" />
-        <button @click="refresh" class="px-3 py-1 bg-gray-200 rounded border">Refresh</button>
+          class="px-3 w-full py-1 border rounded backdrop-blur-xl" />
+        <button @click="refresh" class="px-3 py-1 rounded border backdrop-blur-xl">Refresh</button>
       </div>
     </div>
 
-    <!-- grid -->
-    <TransitionGroup ref="gridRoot" name="fade-grid" tag="div"
-      class="columns-2 sm:columns-3 md:columns-4 lg:columns-5 gap-4 [column-fill:balance] space-y-4"
-      move-class="fade-move">
-      <div v-for="(img, idx) in displayedImages" :key="img"
-        class="relative break-inside-avoid overflow-hidden rounded-lg bg-white shadow hover:scale-[1.02] transition-transform">
-        <button @click="openModal(idx)" class="block w-full text-left">
-          <img @contextmenu.prevent @dragstart.prevent :data-src="getR2ThumbUrl(img)" :alt="img"
-            class="w-full object-cover lazy" loading="lazy" :src="placeholder" />
-        </button>
+    <!-- Masonry Grid -->
+    <TransitionGroup ref="gridRoot" name="fade-grid" tag="div" class="masonry-grid" move-class="fade-move">
+      <div v-for="(img, idx) in displayedImages" :key="img" class="masonry-item" @click="openModal(idx)">
+        <img @contextmenu.prevent @dragstart.prevent :data-src="getR2ThumbUrl(img)" :alt="img" class="lazy"
+          :src="placeholder" loading="lazy" />
       </div>
     </TransitionGroup>
 
-    <!-- jika tidak ada hasil -->
+    <!-- Message (No result) -->
     <Transition name="fade">
-      <div v-if="!loading && filter && filtered.length === 0" class="text-center text-gray-500 py-10">
+      <div v-if="!loading && filter && filtered.length === 0" class="text-center text-gray-500 py-10 backdrop-blur-md">
         Tidak ada hasil yang cocok dengan "<span class="font-semibold">{{ filter }}</span>"
       </div>
 
-      <div v-else-if="!loading && !filter && filtered.length === 0" class="text-center text-gray-500 py-10">
+      <div v-else-if="!loading && !filter && filtered.length === 0"
+        class="text-center text-gray-500 py-10 backdrop-blur-md">
         Belum ada gambar tersedia.
       </div>
     </Transition>
 
-    <!-- Loading spinner -->
+    <!-- Loading Spinner -->
     <Transition name="fade">
-      <div v-if="loading" class="flex justify-center my-6">
+      <div v-if="loading" class="flex justify-center my-6 backdrop-blur-md">
         <div class="animate-spin rounded-full h-8 w-8 border-4 border-gray-300 border-t-gray-700"></div>
       </div>
     </Transition>
 
-    <!-- Sentinel untuk infinite scroll -->
-    <div ref="sentinel" class="h-10"></div>
+    <!-- Infinite Scroll Sentinel -->
+    <div ref="sentinel" class="h-16"></div>
 
-    <!-- Tombol ke atas -->
+    <!-- Scroll to Top -->
     <Transition name="fade">
       <button v-if="showScrollTop" @click="scrollToTop"
         class="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-slate-100 text-black rounded-full px-3 py-1 border border-black/50 shadow-lg hover:bg-slate-800 hover:text-white transition duration-500 text-xl">
@@ -51,7 +48,7 @@
       </button>
     </Transition>
 
-    <!-- modal -->
+    <!-- Modal -->
     <Transition name="fade-zoom">
       <GalleryModal v-if="showModal" :show="showModal" :index="modalIndex" :total="displayedImages.length"
         :imageList="displayedImages" @close="closeModal" @prev="modalPrev" @next="modalNext" />
@@ -61,7 +58,7 @@
 
 <script setup>
 import axios from 'axios'
-import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
+import { ref, nextTick, onMounted, onUnmounted } from 'vue'
 import GalleryModal from './GalleryModal.vue'
 
 const IMAGES_JSON = import.meta.env.VITE_IMAGES_JSON_URL
@@ -88,7 +85,41 @@ function getR2ThumbUrl(url) {
   return url.replace(/^(https?:\/\/[^/]+)/, '$1/cdn-cgi/image/fit=scale-down,width=400')
 }
 
-// observer untuk lazyload
+/* -------------------------
+   Masonry span helpers
+   ------------------------- */
+function getGridMetrics() {
+  const grid = gridRoot.value?.$el || gridRoot.value || document.querySelector('.masonry-grid')
+  if (!grid) return { rowHeight: 8, gap: 16 }
+  const rowHeightRaw = getComputedStyle(grid).getPropertyValue('grid-auto-rows') || '8px'
+  const gapRaw = getComputedStyle(grid).getPropertyValue('gap') || getComputedStyle(grid).getPropertyValue('grid-gap') || '16px'
+  const rowHeight = parseFloat(rowHeightRaw) || 8
+  const gap = parseFloat(gapRaw) || 16
+  return { rowHeight, gap, grid }
+}
+
+function setItemRowSpan(item) {
+  // measure and set gridRowEnd on the masonry-item
+  const img = item.querySelector('img')
+  if (!img) return
+  // measure in next frame to ensure layout is stable
+  requestAnimationFrame(() => {
+    const { rowHeight, gap } = getGridMetrics()
+    const height = img.getBoundingClientRect().height
+    // include small extra for rounding
+    const rowSpan = Math.max(1, Math.ceil((height + gap) / (rowHeight + gap)))
+    item.style.gridRowEnd = `span ${rowSpan}`
+  })
+}
+
+function resizeAllItems() {
+  const items = (gridRoot.value?.$el || gridRoot.value || document).querySelectorAll('.masonry-item')
+  items.forEach((it) => setItemRowSpan(it))
+}
+
+/* -------------------------
+   Lazy load observer (improved)
+   ------------------------- */
 function setupLazyObserver() {
   if (!ioLazy) {
     ioLazy = new IntersectionObserver(
@@ -98,34 +129,63 @@ function setupLazyObserver() {
             const img = entry.target
             const data = img.getAttribute('data-src')
             if (data) {
-              img.onload = () => img.classList.add('loaded')
+              // attach load handler before setting src to ensure it fires
+              const onLoaded = () => {
+                img.classList.add('loaded')
+                // set span for parent item
+                const item = img.closest('.masonry-item')
+                if (item) setItemRowSpan(item)
+                img.removeEventListener('load', onLoaded)
+              }
+              img.addEventListener('load', onLoaded)
               img.src = data
               img.removeAttribute('data-src')
+              ioLazy.unobserve(img)
+            } else {
+              // already have src (maybe cached) -> ensure span
+              const item = img.closest('.masonry-item')
+              if (item) setItemRowSpan(item)
               ioLazy.unobserve(img)
             }
           }
         })
       },
-      { rootMargin: '300px' }
+      { rootMargin: '400px' }
     )
   }
 
   nextTick(() => {
-    const rootEl = gridRoot.value?.$el || gridRoot.value
+    const rootEl = gridRoot.value?.$el || gridRoot.value || document
     if (!rootEl) return
     rootEl.querySelectorAll('img.lazy').forEach((img) => {
-      if (img.getAttribute('data-src')) ioLazy.observe(img)
+      // if image already has data-src, observe it
+      if (img.getAttribute('data-src')) {
+        ioLazy.observe(img)
+      } else {
+        // no data-src: image already has src (maybe from cache) -> set span immediately
+        // but ensure it's measured after a frame; if already complete call directly
+        if (img.complete) {
+          const item = img.closest('.masonry-item')
+          if (item) setItemRowSpan(item)
+        } else {
+          img.addEventListener('load', () => {
+            const item = img.closest('.masonry-item')
+            if (item) setItemRowSpan(item)
+          }, { once: true })
+        }
+      }
     })
   })
 }
 
-// acak array
+/* -------------------------
+   Fetch & filtering
+   ------------------------- */
 const seed = ref(Date.now())
-function randomWithSeed(seed) {
-  const x = Math.sin(seed++) * 10000
+function randomWithSeed(s) {
+  const x = Math.sin(s++) * 10000
   return x - Math.floor(x)
 }
-
 function shuffleArray(arr) {
   const a = [...arr]
   for (let i = a.length - 1; i > 0; i--) {
@@ -135,7 +195,6 @@ function shuffleArray(arr) {
   return a
 }
 
-// ambil data images.json
 async function loadJson({ force = false } = {}) {
   loading.value = true
   try {
@@ -163,7 +222,9 @@ async function loadJson({ force = false } = {}) {
     return false
   } finally {
     loading.value = false
-    nextTick(setupLazyObserver)
+    nextTick(() => {
+      setupLazyObserver()
+    })
   }
 }
 
@@ -188,7 +249,12 @@ function applyFilter() {
     : images.value
   displayedImages.value = filtered.value.slice(0, batchSize)
   currentBatch = 1
-  setupLazyObserver()
+  // wait DOM update then setup lazy observer and compute spans
+  nextTick(() => {
+    setupLazyObserver()
+    // compute spans for images that already loaded (cache) and placeholders
+    resizeAllItems()
+  })
 }
 
 let filterTimeout
@@ -197,7 +263,9 @@ function onFilter() {
   filterTimeout = setTimeout(() => applyFilter(), 300)
 }
 
-// infinite scroll
+/* -------------------------
+   Infinite scroll
+   ------------------------- */
 function setupInfiniteScroll() {
   if (ioScroll) ioScroll.disconnect()
   ioScroll = new IntersectionObserver(
@@ -215,18 +283,21 @@ function loadMore() {
   if (nextItems.length === 0) return
   displayedImages.value.push(...nextItems)
   currentBatch++
-  nextTick(setupLazyObserver)
+  nextTick(() => {
+    setupLazyObserver()
+    resizeAllItems()
+  })
 }
 
-// tombol ke atas
+/* -------------------------
+   Scroll + modal + lifecycle
+   ------------------------- */
 function handleScroll() {
   showScrollTop.value = window.scrollY > 500
 }
-
 function scrollToTop() {
   window.scrollTo({ top: 0, behavior: 'smooth' })
 }
-
 function disableContextMenu(e) {
   e.preventDefault()
 }
@@ -235,6 +306,12 @@ onMounted(() => {
   loadJson()
   setupInfiniteScroll()
   window.addEventListener('scroll', handleScroll)
+  window.addEventListener('resize', resizeAllItems)
+
+  // juga recompute spans setelah load (safety)
+  window.addEventListener('load', () => {
+    nextTick(resizeAllItems)
+  })
 
   // Nonaktifkan klik kanan
   document.addEventListener('contextmenu', disableContextMenu)
@@ -242,10 +319,13 @@ onMounted(() => {
 
 onUnmounted(() => {
   window.removeEventListener('scroll', handleScroll)
+  window.removeEventListener('resize', resizeAllItems)
   document.removeEventListener('contextmenu', disableContextMenu)
+  if (ioLazy) ioLazy.disconnect()
+  if (ioScroll) ioScroll.disconnect()
 })
 
-// modal
+// modal functions
 function openModal(idx) {
   modalIndex.value = idx
   showModal.value = true
@@ -264,6 +344,37 @@ function modalNext() {
 </script>
 
 <style scoped>
+/* grid-based masonry: keep grid-auto-rows small base */
+.masonry-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  grid-auto-rows: 8px;
+  /* dasar baris untuk perhitungan span */
+}
+
+.masonry-item {
+  border-radius: .5rem;
+  overflow: hidden;
+  cursor: pointer;
+  transition: transform .3s ease;
+  position: relative;
+  /* penting untuk TransitionGroup */
+  /* grid-row-end akan di-set dinamis oleh JS */
+}
+
+.masonry-item img {
+  width: 100%;
+  height: auto;
+  display: block;
+  object-fit: cover;
+}
+
+.masonry-item:hover {
+  transform: scale(1.02);
+}
+
+/* --- Transitions --- */
 .fade-grid-enter-active {
   transition: opacity 0.4s ease, transform 0.4s ease;
 }
@@ -308,8 +419,9 @@ function modalNext() {
   opacity: 0;
 }
 
+/* Lazy Load */
 img.lazy {
-  opacity: 0;
+  opacity: 1;
   transition: opacity 0.5s ease;
 }
 

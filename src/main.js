@@ -22,6 +22,7 @@ document.addEventListener('touchstart', e => {
     if (e.touches.length > 1) e.preventDefault();
 });
 
+// Nonaktifkan user-select di semua elemen
 const style = document.createElement('style');
 style.innerHTML = `
   * {
@@ -34,4 +35,6 @@ style.innerHTML = `
 `;
 document.head.appendChild(style);
 
-createApp(App).mount('#app')
+const app = createApp(App)
+
+app.mount('#app')
