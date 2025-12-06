@@ -13,7 +13,7 @@
     <!-- Masonry Grid -->
     <TransitionGroup ref="gridRoot" name="fade-grid" tag="div" class="masonry-grid" move-class="fade-move">
       <div v-for="(img, idx) in displayedImages" :key="img" class="masonry-item" @click="openModal(idx)">
-        <img @contextmenu.prevent @dragstart.prevent :data-src="getR2ThumbUrl(img)" :alt="img" class="lazy"
+        <img @contextmenu.prevent @dragstart.prevent :data-src="getR2ThumbUrl(img)" :alt="img" class="lazy rounded-lg"
           :src="placeholder" loading="lazy" />
       </div>
     </TransitionGroup>
@@ -347,7 +347,6 @@ function modalNext() {
 .masonry-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  /* minimal 2 kolom */
   gap: 1rem;
   grid-auto-rows: 8px;
 }
@@ -374,13 +373,10 @@ function modalNext() {
 }
 
 .masonry-item {
-  border-radius: .5rem;
   overflow: hidden;
   cursor: pointer;
   transition: transform .3s ease;
   position: relative;
-  /* penting untuk TransitionGroup */
-  /* grid-row-end akan di-set dinamis oleh JS */
 }
 
 .masonry-item img {
