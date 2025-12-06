@@ -22,8 +22,8 @@
 
             <!-- tombol favorit -->
             <button @click="toggleFavorite"
-                class="absolute bottom-20 md:w-fit max-md:w-full left-1/2 -translate-x-1/2 truncate text-white bg-black/50 rounded-full px-3 py-1">
-                {{ isFavorited ? '❤️' : '🤍' }}
+                class="absolute max-lg:bottom-15 lg:bottom-20 left-1/2 -translate-x-1/2 truncate text-white bg-black/50 rounded-full px-3 py-1">
+                Favoritkan {{ isFavorited ? '❤️' : '🤍' }}
             </button>
 
             <!-- nama file di bawah gambar -->
