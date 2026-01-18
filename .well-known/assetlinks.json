@@ -4,7 +4,16 @@
     "target": {
       "namespace": "android_app",
       "package_name": "dev.pages.koleksi_boneka.twa",
-      "sha256_cert_fingerprints": ["CA:E3:48:81:86:97:75:A5:D0:AB:34:42:6A:79:42:F2:12:F9:CC:F4:2F:51:76:AB:A3:9C:D1:5C:E6:86:31:35"]
+      "sha256_cert_fingerprints": [
+        "CA:E3:48:81:86:97:75:A5:D0:AB:34:42:6A:79:42:F2:12:F9:CC:F4:2F:51:76:AB:A3:9C:D1:5C:E6:86:31:35"
+      ]
+    }
+  },
+  {
+    "relation": ["check_validation"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "dev.pages.koleksi_boneka.twa"
     }
   }
 ]
