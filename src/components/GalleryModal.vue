@@ -23,12 +23,20 @@
           v-if="currentSrc"
           :src="currentSrc"
           @click.stop
+          @dblclick.stop="toggleFavorite"
           @load="onImageLoad"
           @contextmenu.prevent
           @dragstart.prevent
           class="w-fit max-h-[85vh] object-contain rounded transition-all duration-300"
         />
       </Transition>
+
+      <div
+        v-if="showHeart"
+        class="absolute inset-0 flex items-center justify-center pointer-events-none"
+      >
+        <span class="text-6xl animate-heart">❤️</span>
+      </div>
 
       <!-- loading indicator -->
       <div
@@ -108,6 +116,14 @@ const isFavorited = ref(false);
 const loaded = ref(false);
 const currentSrc = ref("");
 const imageRef = ref(null);
+const showHeart = ref(false);
+
+function triggerHeart() {
+  showHeart.value = true;
+  setTimeout(() => {
+    showHeart.value = false;
+  }, 800); // durasi animasi 0.8 detik
+}
 
 function onContainerClick(event) {
   if (!imageRef.value) return;
@@ -139,9 +155,9 @@ function toggleFavorite() {
     fav.push(current);
     localStorage.setItem("favorites", JSON.stringify(fav));
     isFavorited.value = true;
+    triggerHeart(); // jalankan animasi saat jadi favorit
   }
 
-  // beri tahu parent
   emit("favorited", current);
 }
 
@@ -215,5 +231,24 @@ onUnmounted(() => window.removeEventListener("keydown", handleKey));
 .fade-enter-from,
 .fade-leave-to {
   opacity: 0;
+}
+
+@keyframes heart-pop {
+  0% {
+    transform: scale(0.5);
+    opacity: 0;
+  }
+  50% {
+    transform: scale(1.3);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 0;
+  }
+}
+
+.animate-heart {
+  animation: heart-pop 0.8s ease forwards;
 }
 </style>
