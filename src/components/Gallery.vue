@@ -57,6 +57,7 @@
         </div>
         <div
           v-if="favorites.includes(img)"
+          role="favorite"
           class="absolute top-1 right-1 bg-black/60 text-white rounded-full px-1 py-1 text-xs"
         >
           ❤️
@@ -163,16 +164,29 @@ function loadFavorites() {
   favorites.value = JSON.parse(localStorage.getItem("favorites") || "[]");
 }
 
-function updateFavorite() {
-  loadFavorites();
-  applyFilter(); // WAJIB
+function updateFavorite(imgUrl) {
+  // toggle favorit
+  if (favorites.value.includes(imgUrl)) {
+    favorites.value = favorites.value.filter((u) => u !== imgUrl);
+  } else {
+    favorites.value.push(imgUrl);
+  }
 
-  nextTick(async () => {
-    const imgs = document.querySelectorAll(".masonry-item img");
-    await Promise.allSettled(
-      [...imgs].map((img) => img.decode?.() || Promise.resolve())
-    );
-    resizeAllItems();
+  localStorage.setItem("favorites", JSON.stringify(favorites.value));
+
+  // update visual masonry items tanpa reload grid
+  nextTick(() => {
+    const item = document.querySelector(`.masonry-item img[alt="${imgUrl}"]`);
+    if (item) {
+      const heart = item
+        .closest(".masonry-item")
+        .querySelector("div[role='favorite']");
+      if (heart) {
+        heart.style.display = favorites.value.includes(imgUrl)
+          ? "block"
+          : "none";
+      }
+    }
   });
 }
 
@@ -542,7 +556,6 @@ function modalNext() {
   opacity: 0;
   transform: scale(0.95);
 }
-
 
 .fade-zoom-leave-to {
   opacity: 0;
