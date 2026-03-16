@@ -23,8 +23,9 @@
           v-if="currentSrc"
           :src="currentSrc"
           @click.stop
-          @dblclick.stop="toggleFavorite"
+          @dblclick.stop="onToggleFavorite"
           @load="onImageLoad"
+          @error="handleImageError"
           @contextmenu.prevent
           @dragstart.prevent
           class="w-fit max-h-[85vh] object-contain rounded transition-all duration-300"
@@ -40,7 +41,7 @@
 
       <!-- loading indicator -->
       <div
-        v-if="!loaded"
+        v-if="!loaded && !loadError"
         class="absolute inset-0 flex items-center justify-center text-white"
       >
         <div
@@ -48,12 +49,21 @@
         ></div>
       </div>
 
+      <!-- error message -->
+      <div
+        v-if="loadError"
+        class="absolute inset-0 flex items-center justify-center text-white flex-col gap-4"
+      >
+        <box-icon name="image-alt" size="lg" color="white"></box-icon>
+        <p class="text-lg">Gambar tidak dapat dimuat</p>
+      </div>
+
       <!-- tombol favorit -->
       <button
-        @click.stop="toggleFavorite"
+        @click.stop="onToggleFavorite"
         class="absolute max-lg:bottom-15 lg:bottom-20 left-1/2 -translate-x-1/2 truncate text-white bg-black/50 rounded-full px-3 py-1"
       >
-        Favoritkan {{ isFavorited ? "❤️" : "🤍" }}
+        Favoritkan {{ itemIsFavorited ? "❤️" : "🤍" }}
       </button>
 
       <!-- nama file di bawah gambar -->
@@ -100,7 +110,9 @@
 </template>
 
 <script setup>
-import { ref, watch, onMounted, onUnmounted } from "vue";
+import { ref, watch, onMounted, onUnmounted, computed } from "vue";
+import { useFavorites } from "../composables/useFavorites";
+import { getR2Url, extractFileName } from "../utils/gallery";
 
 const props = defineProps({
   show: Boolean,
@@ -111,69 +123,50 @@ const props = defineProps({
 
 const emit = defineEmits(["close", "prev", "next", "favorited"]);
 
-const isFavorited = ref(false);
+const { toggleFavorite, isFavorited } = useFavorites();
 
 const loaded = ref(false);
-const currentSrc = ref("");
+const loadError = ref(false);
 const imageRef = ref(null);
 const showHeart = ref(false);
+
+const currentUrl = computed(() => props.imageList[props.index]);
+const currentSrc = computed(() => getR2Url(currentUrl.value, 720));
+const itemIsFavorited = computed(() => isFavorited(currentUrl.value));
 
 function triggerHeart() {
   showHeart.value = true;
   setTimeout(() => {
     showHeart.value = false;
-  }, 800); // durasi animasi 0.8 detik
+  }, 800);
 }
 
 function onContainerClick(event) {
-  if (!imageRef.value) return;
-
-  // jika klik terjadi DI DALAM gambar → jangan tutup
-  if (imageRef.value.contains(event.target)) {
-    return;
-  }
-
-  // selain itu (area kuning) → tutup
+  if (!imageRef.value || imageRef.value.contains(event.target)) return;
   onClose();
 }
 
-function checkFavorite() {
-  const fav = JSON.parse(localStorage.getItem("favorites") || "[]");
-  const current = props.imageList[props.index];
-  isFavorited.value = fav.includes(current);
+function onToggleFavorite() {
+  const url = currentUrl.value;
+  const wasFavorited = itemIsFavorited.value;
+  toggleFavorite(url);
+  if (!wasFavorited) triggerHeart();
+  emit("favorited", url);
 }
 
-function toggleFavorite() {
-  const fav = JSON.parse(localStorage.getItem("favorites") || "[]");
-  const current = props.imageList[props.index];
-
-  if (fav.includes(current)) {
-    const updated = fav.filter((i) => i !== current);
-    localStorage.setItem("favorites", JSON.stringify(updated));
-    isFavorited.value = false;
-  } else {
-    fav.push(current);
-    localStorage.setItem("favorites", JSON.stringify(fav));
-    isFavorited.value = true;
-    triggerHeart(); // jalankan animasi saat jadi favorit
-  }
-
-  emit("favorited", current);
-}
-
-// ketika index berubah, set src baru dan reset loaded
-watch(
-  () => props.index,
-  (newIndex) => {
-    checkFavorite();
-    loaded.value = false;
-    currentSrc.value = getR2FullUrl(props.imageList[newIndex]);
-  },
-  { immediate: true }
-);
+watch(() => props.index, () => {
+  loaded.value = false;
+  loadError.value = false;
+});
 
 function onImageLoad() {
   loaded.value = true;
+  loadError.value = false;
+}
+
+function handleImageError() {
+  loaded.value = false;
+  loadError.value = true;
 }
 
 function onClose() {
@@ -184,18 +177,6 @@ function onPrevClick() {
 }
 function onNextClick() {
   emit("next");
-}
-
-function extractFileName(url) {
-  if (!url) return "";
-  return url.split("/").pop();
-}
-function getR2FullUrl(url) {
-  if (!url) return "";
-  return url.replace(
-    /^(https?:\/\/[^/]+)/,
-    "$1/cdn-cgi/image/fit=scale-down,width=720"
-  );
 }
 
 // keyboard nav
@@ -216,11 +197,13 @@ function handleKey(e) {
 
 onMounted(() => {
   window.addEventListener("keydown", handleKey);
-  checkFavorite();
 });
 
-onUnmounted(() => window.removeEventListener("keydown", handleKey));
+onUnmounted(() => {
+  window.removeEventListener("keydown", handleKey);
+});
 </script>
+
 
 <style>
 .fade-enter-active,

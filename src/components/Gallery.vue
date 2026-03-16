@@ -5,7 +5,6 @@
       <div class="flex items-center gap-2 w-full">
         <input
           v-model="filter"
-          @input="onFilter"
           placeholder="Cari nama file..."
           class="px-3 w-full py-1 border rounded backdrop-blur-xl"
         />
@@ -41,8 +40,9 @@
         <img
           @contextmenu.prevent
           @dragstart.prevent
-          :data-src="getR2ThumbUrl(img)"
+          :data-src="getR2Url(img, 400)"
           :alt="img"
+          @error="handleImageError"
           class="lazy group-hover:scale-110 transition duration-500"
           :src="placeholder"
           loading="lazy"
@@ -56,7 +56,7 @@
           ></box-icon>
         </div>
         <div
-          v-if="favorites.includes(img)"
+          v-if="isFavorited(img)"
           role="favorite"
           class="absolute top-1 right-1 bg-black/60 text-white rounded-full px-1 py-1 text-xs"
         >
@@ -119,7 +119,7 @@
         @close="closeModal"
         @prev="modalPrev"
         @next="modalNext"
-        @favorited="updateFavorite"
+        @favorited="loadFavorites"
       />
     </Transition>
   </div>
@@ -127,15 +127,16 @@
 
 <script setup>
 import axios from "axios";
-import { ref, nextTick, onMounted, onUnmounted, watch } from "vue";
+import { ref, nextTick, onMounted, onUnmounted, watch, computed } from "vue";
 import GalleryModal from "./GalleryModal.vue";
+import { getR2Url, shuffleArray } from "../utils/gallery";
+import { useFavorites } from "../composables/useFavorites";
+import { useMasonry } from "../composables/useMasonry";
 
 const IMAGES_JSON = import.meta.env.VITE_IMAGES_JSON_URL;
 const placeholder = "/placeholder.webp";
 
 const images = ref([]);
-const filtered = ref([]);
-const displayedImages = ref([]);
 const filter = ref("");
 const loading = ref(false);
 const showModal = ref(false);
@@ -143,184 +144,88 @@ const modalIndex = ref(0);
 const gridRoot = ref(null);
 const sentinel = ref(null);
 const showScrollTop = ref(false);
+const showFavoritesOnly = ref(false);
+
+const { favorites, isFavorited, loadFavorites } = useFavorites();
+const { resizeAllItems, setItemRowSpan } = useMasonry(gridRoot);
+
+const batchSize = 40;
+const currentBatch = ref(0);
+
+const filtered = computed(() => {
+  const q = filter.value.trim().toLowerCase();
+  return images.value.filter((url) => {
+    const matchText = q ? url.toLowerCase().includes(q) : true;
+    const matchFav = showFavoritesOnly.value ? isFavorited(url) : true;
+    return matchText && matchFav;
+  });
+});
+
+const displayedImages = ref([]);
+
+watch(filtered, (newFiltered) => {
+  currentBatch.value = 0;
+  displayedImages.value = newFiltered.slice(0, batchSize);
+  currentBatch.value = 1;
+  nextTick(() => {
+    setupLazyObserver();
+    resizeAllItems();
+  });
+});
+
+watch(showFavoritesOnly, () => {
+  // filtered computed will handle it
+});
 
 let ioLazy = null;
 let ioScroll = null;
-const batchSize = 40;
-let currentBatch = 0;
 
-function getR2ThumbUrl(url) {
-  if (!url) return "";
-  return url.replace(
-    /^(https?:\/\/[^/]+)/,
-    "$1/cdn-cgi/image/fit=scale-down,width=400"
-  );
-}
-
-const favorites = ref([]);
-const showFavoritesOnly = ref(false);
-
-function loadFavorites() {
-  favorites.value = JSON.parse(localStorage.getItem("favorites") || "[]");
-}
-
-function updateFavorite(imgUrl) {
-  // toggle favorit
-  if (favorites.value.includes(imgUrl)) {
-    favorites.value = favorites.value.filter((u) => u !== imgUrl);
-  } else {
-    favorites.value.push(imgUrl);
-  }
-
-  localStorage.setItem("favorites", JSON.stringify(favorites.value));
-
-  // update visual masonry items tanpa reload grid
-  nextTick(() => {
-    const item = document.querySelector(`.masonry-item img[alt="${imgUrl}"]`);
-    if (item) {
-      const heart = item
-        .closest(".masonry-item")
-        .querySelector("div[role='favorite']");
-      if (heart) {
-        heart.style.display = favorites.value.includes(imgUrl)
-          ? "block"
-          : "none";
-      }
-    }
-  });
-}
-
-/* -------------------------
-   Masonry span helpers
-   ------------------------- */
-function getGridMetrics() {
-  const grid =
-    gridRoot.value?.$el ||
-    gridRoot.value ||
-    document.querySelector(".masonry-grid");
-  if (!grid) return { rowHeight: 8, gap: 16 };
-  const rowHeightRaw =
-    getComputedStyle(grid).getPropertyValue("grid-auto-rows") || "8px";
-  const gapRaw =
-    getComputedStyle(grid).getPropertyValue("gap") ||
-    getComputedStyle(grid).getPropertyValue("grid-gap") ||
-    "16px";
-  const rowHeight = parseFloat(rowHeightRaw) || 8;
-  const gap = parseFloat(gapRaw) || 16;
-  return { rowHeight, gap, grid };
-}
-
-function setItemRowSpan(item) {
-  // measure and set gridRowEnd on the masonry-item
-  const img = item.querySelector("img");
-  if (!img) return;
-  // measure in next frame to ensure layout is stable
-  requestAnimationFrame(() => {
-    const { rowHeight, gap } = getGridMetrics();
-    const height = img.getBoundingClientRect().height;
-    // include small extra for rounding
-    const rowSpan = Math.max(1, Math.ceil((height + gap) / (rowHeight + gap)));
-    item.style.gridRowEnd = `span ${rowSpan}`;
-  });
-}
-
-function resizeAllItems() {
-  const items = (
-    gridRoot.value?.$el ||
-    gridRoot.value ||
-    document
-  ).querySelectorAll(".masonry-item");
-  items.forEach((it) => setItemRowSpan(it));
-}
-
-/* -------------------------
-   Lazy load observer (improved)
-   ------------------------- */
 function setupLazyObserver() {
-  if (!ioLazy) {
-    ioLazy = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting) {
-            const img = entry.target;
-            const data = img.getAttribute("data-src");
-            if (data) {
-              // attach load handler before setting src to ensure it fires
-              const onLoaded = () => {
-                img.classList.add("loaded");
-                // set span for parent item
-                const item = img.closest(".masonry-item");
-                if (item) setItemRowSpan(item);
-                img.removeEventListener("load", onLoaded);
-              };
-              img.addEventListener("load", onLoaded);
-              img.src = data;
-              img.removeAttribute("data-src");
-              ioLazy.unobserve(img);
-            } else {
-              // already have src (maybe cached) -> ensure span
-              const item = img.closest(".masonry-item");
-              if (item) setItemRowSpan(item);
-              ioLazy.unobserve(img);
-            }
+  if (ioLazy) ioLazy.disconnect();
+  
+  ioLazy = new IntersectionObserver(
+    (entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          const img = entry.target;
+          const dataSrc = img.getAttribute("data-src");
+          if (dataSrc) {
+            img.src = dataSrc;
+            img.removeAttribute("data-src");
+            img.classList.add("loaded");
+            const item = img.closest(".masonry-item");
+            if (item) setItemRowSpan(item);
+            ioLazy.unobserve(img);
           }
-        });
-      },
-      { rootMargin: "400px" }
-    );
-  }
+        }
+      });
+    },
+    { rootMargin: "400px" }
+  );
 
   nextTick(() => {
-    const rootEl = gridRoot.value?.$el || gridRoot.value || document;
+    const rootEl = gridRoot.value?.$el || gridRoot.value;
     if (!rootEl) return;
-    rootEl.querySelectorAll("img.lazy").forEach((img) => {
-      // if image already has data-src, observe it
-      if (img.getAttribute("data-src")) {
-        ioLazy.observe(img);
-      } else {
-        // no data-src: image already has src (maybe from cache) -> set span immediately
-        // but ensure it's measured after a frame; if already complete call directly
-        if (img.complete) {
-          const item = img.closest(".masonry-item");
-          if (item) setItemRowSpan(item);
-        } else {
-          img.addEventListener(
-            "load",
-            () => {
-              const item = img.closest(".masonry-item");
-              if (item) setItemRowSpan(item);
-            },
-            { once: true }
-          );
-        }
-      }
+    rootEl.querySelectorAll("img.lazy[data-src]").forEach((img) => {
+      ioLazy.observe(img);
     });
   });
 }
 
-/* -------------------------
-   Fetch & filtering
-   ------------------------- */
+function handleImageError(e) {
+  e.target.src = placeholder;
+  e.target.classList.add("loaded");
+  const item = e.target.closest(".masonry-item");
+  if (item) setItemRowSpan(item);
+}
+
 const seed = ref(Date.now());
-function randomWithSeed(s) {
-  const x = Math.sin(s++) * 10000;
-  return x - Math.floor(x);
-}
-function shuffleArray(arr) {
-  const a = [...arr];
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(randomWithSeed(seed.value) * (i + 1));
-    [a[i], a[j]] = [a[j], a[i]];
-  }
-  return a;
-}
 
 async function loadJson({ force = false } = {}) {
   loading.value = true;
   try {
     if (!force && sessionStorage.getItem("galleryImages")) {
       images.value = JSON.parse(sessionStorage.getItem("galleryImages"));
-      applyFilter();
       return true;
     }
 
@@ -328,82 +233,38 @@ async function loadJson({ force = false } = {}) {
       ? `${IMAGES_JSON}${IMAGES_JSON.includes("?") ? "&" : "?"}t=${Date.now()}`
       : IMAGES_JSON;
 
-    const res = await axios.get(url, {
-      headers: { "Cache-Control": "no-cache" },
-    });
-    const data = Array.isArray(res.data) ? shuffleArray(res.data) : [];
+    const res = await axios.get(url, { headers: { "Cache-Control": "no-cache" } });
+    const data = Array.isArray(res.data) ? shuffleArray(res.data, seed.value) : [];
     images.value = data;
     sessionStorage.setItem("galleryImages", JSON.stringify(data));
-
-    applyFilter();
     return true;
   } catch (err) {
     console.error("Gagal fetch images.json", err);
     images.value = [];
-    applyFilter();
     return false;
   } finally {
     loading.value = false;
-    nextTick(() => {
-      setupLazyObserver();
-    });
+    nextTick(setupLazyObserver);
   }
 }
 
 async function refresh() {
   filter.value = "";
   images.value = [];
-  filtered.value = [];
   displayedImages.value = [];
-  currentBatch = 0;
-  const ok = await loadJson({ force: true });
-  if (ok) {
-    applyFilter();
-    setupLazyObserver();
+  currentBatch.value = 0;
+  if (await loadJson({ force: true })) {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 }
 
-function applyFilter() {
-  const q = filter.value.trim().toLowerCase();
-
-  filtered.value = images.value.filter((url) => {
-    // filter teks
-    const matchText = q ? url.toLowerCase().includes(q) : true;
-
-    // filter favorit
-    const matchFav = showFavoritesOnly.value
-      ? favorites.value.includes(url)
-      : true;
-
-    return matchText && matchFav;
-  });
-
-  // reset infinite scroll
-  currentBatch = 0;
-  displayedImages.value = filtered.value.slice(0, batchSize);
-  currentBatch = 1;
-
-  nextTick(() => {
-    setupLazyObserver();
-    resizeAllItems();
-  });
-}
-
-let filterTimeout;
-function onFilter() {
-  clearTimeout(filterTimeout);
-  filterTimeout = setTimeout(() => applyFilter(), 300);
-}
-
-/* -------------------------
-   Infinite scroll
-   ------------------------- */
 function setupInfiniteScroll() {
   if (ioScroll) ioScroll.disconnect();
   ioScroll = new IntersectionObserver(
     (entries) => {
-      if (entries[0].isIntersecting && !loading.value) loadMore();
+      if (entries[0].isIntersecting && !loading.value) {
+        loadMore();
+      }
     },
     { rootMargin: "400px" }
   );
@@ -411,75 +272,58 @@ function setupInfiniteScroll() {
 }
 
 function loadMore() {
-  const start = currentBatch * batchSize;
+  const start = currentBatch.value * batchSize;
   const nextItems = filtered.value.slice(start, start + batchSize);
   if (nextItems.length === 0) return;
   displayedImages.value.push(...nextItems);
-  currentBatch++;
+  currentBatch.value++;
   nextTick(() => {
     setupLazyObserver();
     resizeAllItems();
   });
 }
 
-/* -------------------------
-   Scroll + modal + lifecycle
-   ------------------------- */
 function handleScroll() {
   showScrollTop.value = window.scrollY > 500;
 }
+
 function scrollToTop() {
   window.scrollTo({ top: 0, behavior: "smooth" });
-}
-function disableContextMenu(e) {
-  e.preventDefault();
 }
 
 onMounted(() => {
   loadJson();
-  loadFavorites();
   setupInfiniteScroll();
   window.addEventListener("scroll", handleScroll);
-  window.addEventListener("resize", resizeAllItems);
-
-  // juga recompute spans setelah load (safety)
-  window.addEventListener("load", () => {
-    nextTick(resizeAllItems);
-  });
-
-  // Nonaktifkan klik kanan
-  document.addEventListener("contextmenu", disableContextMenu);
+  document.addEventListener("contextmenu", (e) => e.preventDefault());
 });
 
 onUnmounted(() => {
   window.removeEventListener("scroll", handleScroll);
-  window.removeEventListener("resize", resizeAllItems);
-  document.removeEventListener("contextmenu", disableContextMenu);
   if (ioLazy) ioLazy.disconnect();
   if (ioScroll) ioScroll.disconnect();
 });
 
-watch(showFavoritesOnly, () => {
-  applyFilter();
-});
-
-// modal functions
 function openModal(idx) {
   modalIndex.value = idx;
   showModal.value = true;
   document.body.style.overflow = "hidden";
 }
+
 function closeModal() {
   showModal.value = false;
   document.body.style.overflow = "";
 }
+
 function modalPrev() {
   if (modalIndex.value > 0) modalIndex.value--;
 }
+
 function modalNext() {
   if (modalIndex.value < displayedImages.value.length - 1) modalIndex.value++;
 }
 </script>
+
 
 <style scoped>
 .masonry-grid {
